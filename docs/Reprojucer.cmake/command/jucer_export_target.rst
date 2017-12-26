@@ -30,6 +30,7 @@ Define the settings specific to an export target.
     [PREBUILD_SHELL_SCRIPT <shell_script_content>]
     [POSTBUILD_SHELL_SCRIPT <shell_script_content>]
 
+    [MANIFEST_FILE <manifest_file>]
     [PLATFORM_TOOLSET <platform_toolset>]
 
     [CXX_STANDARD_TO_USE <cxx_standard>]
@@ -51,7 +52,7 @@ Define the settings specific to an export target.
 ``DOCUMENT_FILE_EXTENSIONS`` is only supported by the ``"Xcode (MacOSX)"`` exporter on
 ``"GUI Application"`` projects.
 
-``PLATFORM_TOOLSET`` is only supported by the following exporters:
+``MANIFEST_FILE`` and ``PLATFORM_TOOLSET`` are only supported by the following exporters:
 ``"Visual Studio 2017"``, ``"Visual Studio 2015"`` and ``"Visual Studio 2013"``.
 
 ``CXX_STANDARD_TO_USE`` and ``PKGCONFIG_LIBRARIES`` are only supported by the

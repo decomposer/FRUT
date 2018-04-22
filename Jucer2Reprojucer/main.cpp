@@ -372,7 +372,9 @@ int main(int argc, char* argv[])
   {
     wLn("jucer_project_settings(");
     convertSetting(jucerProject, "name", "PROJECT_NAME", {});
-    convertSetting(jucerProject, "version", "PROJECT_VERSION", {});
+    convertSetting(jucerProject, "version", "PROJECT_VERSION", [](const juce::var& v) {
+      return v.isVoid() ? juce::String{"1.0.0"} : value.toString();
+    });
 
     convertSettingIfDefined(jucerProject, "companyName", "COMPANY_NAME", {});
     convertSettingIfDefined(jucerProject, "companyCopyright", "COMPANY_COPYRIGHT", {});

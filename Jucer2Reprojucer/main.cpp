@@ -512,6 +512,7 @@ int main(int argc, char* argv[])
         convertOnOffSettingWithDefault(jucerProject, "enableIAA", "ENABLE_INTERAPP_AUDIO",
                                        false);
       }
+      convertSettingAsList(jucerProject, "pluginFormats", "PLUGIN_FORMATS", {});
       convertSetting(jucerProject, "pluginName", "PLUGIN_NAME", {});
       convertSetting(jucerProject, "pluginDesc", "PLUGIN_DESCRIPTION", {});
       convertSetting(jucerProject, "pluginManufacturer", "PLUGIN_MANUFACTURER", {});

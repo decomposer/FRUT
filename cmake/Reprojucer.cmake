@@ -1527,6 +1527,10 @@ function(jucer_project_end)
       _FRUT_set_JucePlugin_Build_defines(${shared_code_target} "SharedCodeTarget")
       _FRUT_set_custom_xcode_flags(${shared_code_target})
 
+      if(UNIX AND NOT APPLE)
+        set_property(TARGET ${shared_code_target} PROPERTY POSITION_INDEPENDENT_CODE ON)
+      endif()
+
       if(JUCER_BUILD_VST)
         set(vst_target ${target}_VST)
         add_library(${vst_target} MODULE

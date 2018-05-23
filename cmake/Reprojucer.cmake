@@ -360,12 +360,19 @@ function(jucer_project_module module_name PATH_KEYWORD modules_folder)
       configure_file("${Reprojucer_templates_DIR}/JuceLibraryCode-Wrapper.cpp"
         "JuceLibraryCode/${proxy_prefix}${src_file_basename}"
       )
-      list(APPEND JUCER_PROJECT_SOURCES
+      if(${module_name} STREQUAL "juce_audio_plugin_client")
+        set(source_list PROJECT)
+      else()
+        set(source_list LIBRARY)
+      endif()
+
+      list(APPEND JUCER_${source_list}_SOURCES
         "${CMAKE_CURRENT_BINARY_DIR}/JuceLibraryCode/${proxy_prefix}${src_file_basename}"
       )
     endif()
   endforeach()
 
+  set(JUCER_LIBRARY_SOURCES ${JUCER_LIBRARY_SOURCES} PARENT_SCOPE)
   set(JUCER_PROJECT_SOURCES ${JUCER_PROJECT_SOURCES} PARENT_SCOPE)
 
   set(module_header_file "${modules_folder}/${module_name}/${module_name}.h")
@@ -1392,6 +1399,7 @@ function(jucer_project_end)
   )
 
   set(all_sources
+    ${JUCER_LIBRARY_SOURCES}
     ${JUCER_PROJECT_SOURCES}
     ${JUCER_PROJECT_RESOURCES}
     ${JUCER_PROJECT_BROWSABLE_FILES}
@@ -1490,6 +1498,29 @@ function(jucer_project_end)
       unset(VST3_sources)
       unset(Standalone_sources)
       unset(SharedCode_sources)
+
+      foreach(src_file ${JUCER_LIBRARY_SOURCES})
+        # See XCodeProjectExporter::getTargetTypeFromFilePath()
+        # in JUCE/extras/Projucer/Source/Project Saving/jucer_ProjectExport_XCode.h
+        if(src_file MATCHES "_AU[._]")
+          list(APPEND AudioUnit_sources "${src_file}")
+        elseif(src_file MATCHES "_AUv3[._]")
+          list(APPEND AudioUnitv3_sources "${src_file}")
+        elseif(src_file MATCHES "_AAX[._]")
+          list(APPEND AAX_sources "${src_file}")
+        elseif(src_file MATCHES "_RTAS[._]")
+          list(APPEND RTAS_sources "${src_file}")
+        elseif(src_file MATCHES "_VST2[._]")
+          list(APPEND VST_sources "${src_file}")
+        elseif(src_file MATCHES "_VST3[._]")
+          list(APPEND VST3_sources "${src_file}")
+        elseif(src_file MATCHES "_Standalone[._]")
+          list(APPEND Standalone_sources "${src_file}")
+        else()
+          list(APPEND JuceLibrary_sources "${src_file}")
+        endif()
+      endforeach()
+
       foreach(src_file ${JUCER_PROJECT_SOURCES})
         # See XCodeProjectExporter::getTargetTypeFromFilePath()
         # in JUCE/extras/Projucer/Source/Project Saving/jucer_ProjectExport_XCode.h
@@ -1512,6 +1543,8 @@ function(jucer_project_end)
         endif()
       endforeach()
 
+      add_library(JuceLibrary STATIC ${JuceLibrary_sources})
+
       set(shared_code_target ${target}_Shared_Code)
       add_library(${shared_code_target} STATIC
         ${SharedCode_sources}
@@ -1521,6 +1554,15 @@ function(jucer_project_end)
         ${icon_file}
         ${resources_rc_file}
       )
+
+      target_link_libraries(${shared_code_target} PUBLIC JuceLibrary)
+
+      _FRUT_set_output_directory_properties(JuceLibrary "Shared Code")
+      _FRUT_set_common_target_properties(JuceLibrary JuceLibrary)
+      target_compile_definitions(JuceLibrary PRIVATE "JUCE_SHARED_CODE=1")
+      _FRUT_set_JucePlugin_Build_defines(JuceLibrary "SharedCodeTarget")
+      _FRUT_set_custom_xcode_flags(JuceLibrary)
+
       _FRUT_set_output_directory_properties(${shared_code_target} "Shared Code")
       _FRUT_set_common_target_properties(${shared_code_target})
       target_compile_definitions(${shared_code_target} PRIVATE "JUCE_SHARED_CODE=1")
@@ -1528,6 +1570,7 @@ function(jucer_project_end)
       _FRUT_set_custom_xcode_flags(${shared_code_target})
 
       if(UNIX AND NOT APPLE)
+        set_property(TARGET JuceLibrary PROPERTY POSITION_INDEPENDENT_CODE ON)
         set_property(TARGET ${shared_code_target} PROPERTY POSITION_INDEPENDENT_CODE ON)
       endif()
 
@@ -2319,13 +2362,21 @@ endfunction()
 
 function(_FRUT_set_common_target_properties target)
 
+  if(ARGC GREATER 1)
+    set(binary_name ${ARGV1})
+  elseif(${JUCER_BINARY_NAME})
+    set(binary_name ${JUCER_BINARY_NAME})
+  else()
+    set(binary_name ${JUCER_PROJECT_NAME})
+  endif()
+
   foreach(config ${JUCER_PROJECT_CONFIGURATIONS})
     string(TOUPPER "${config}" upper_config)
 
-    if(JUCER_BINARY_NAME_${config})
-      set(output_name "${JUCER_BINARY_NAME_${config}}")
+    if(${${binary_name}_${config}})
+      set(output_name "${${binary_name}_${config}}")
     else()
-      set(output_name "${JUCER_PROJECT_NAME}")
+      set(output_name ${binary_name})
     endif()
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME_${upper_config} "${output_name}"

@@ -361,12 +361,19 @@ function(jucer_project_module module_name PATH_KEYWORD modules_folder)
       configure_file("${Reprojucer_templates_DIR}/JuceLibraryCode-Wrapper.cpp"
         "JuceLibraryCode/${proxy_prefix}${src_file_basename}"
       )
-      list(APPEND JUCER_PROJECT_SOURCES
+      if(${module_name} STREQUAL "juce_audio_plugin_client")
+        set(source_list PROJECT)
+      else()
+        set(source_list LIBRARY)
+      endif()
+
+      list(APPEND JUCER_${source_list}_SOURCES
         "${CMAKE_CURRENT_BINARY_DIR}/JuceLibraryCode/${proxy_prefix}${src_file_basename}"
       )
     endif()
   endforeach()
 
+  set(JUCER_LIBRARY_SOURCES ${JUCER_LIBRARY_SOURCES} PARENT_SCOPE)
   set(JUCER_PROJECT_SOURCES ${JUCER_PROJECT_SOURCES} PARENT_SCOPE)
 
   file(STRINGS "${module_header_file}" config_flags_lines REGEX "/\\*\\* Config: ")
@@ -493,6 +500,7 @@ function(jucer_export_target exporter)
 
   set(single_value_keywords
     "TARGET_PROJECT_FOLDER"
+    "CREATE_JUCE_LIBRARY_TARGET"
     "VST_SDK_FOLDER"
     "ICON_SMALL"
     "ICON_LARGE"
@@ -559,6 +567,10 @@ function(jucer_export_target exporter)
     string(REPLACE "\\" "/" project_folder "${_TARGET_PROJECT_FOLDER}")
     _FRUT_abs_path_based_on_jucer_project_dir(project_folder "${project_folder}")
     set(JUCER_TARGET_PROJECT_FOLDER ${project_folder} PARENT_SCOPE)
+  endif()
+
+  if(DEFINED _CREATE_JUCE_LIBRARY_TARGET)
+    set(JUCER_CREATE_JUCE_LIBRARY_TARGET ${_CREATE_JUCE_LIBRARY_TARGET} PARENT_SCOPE)
   endif()
 
   if(DEFINED _VST_SDK_FOLDER)
@@ -1396,6 +1408,7 @@ function(jucer_project_end)
   )
 
   set(all_sources
+    ${JUCER_LIBRARY_SOURCES}
     ${JUCER_PROJECT_SOURCES}
     ${JUCER_PROJECT_RESOURCES}
     ${JUCER_PROJECT_BROWSABLE_FILES}
@@ -1478,31 +1491,51 @@ function(jucer_project_end)
     unset(VST_sources)
     unset(VST3_sources)
     unset(Standalone_sources)
-    unset(SharedCode_sources)
-    foreach(src_file ${JUCER_PROJECT_SOURCES})
-      # See Project::getTargetTypeFromFilePath()
-      # in JUCE/extras/Projucer/Source/Project/jucer_Project.cpp
-      if(src_file MATCHES "_AU[._]")
-        list(APPEND AudioUnit_sources "${src_file}")
-      elseif(src_file MATCHES "_AUv3[._]")
-        list(APPEND AudioUnitv3_sources "${src_file}")
-      elseif(src_file MATCHES "_AAX[._]")
-        list(APPEND AAX_sources "${src_file}")
-      elseif(src_file MATCHES "_RTAS[._]")
-        list(APPEND RTAS_sources "${src_file}")
-      elseif(src_file MATCHES "_VST2[._]")
-        list(APPEND VST_sources "${src_file}")
-      elseif(src_file MATCHES "_VST3[._]")
-        list(APPEND VST3_sources "${src_file}")
-      elseif(src_file MATCHES "_Standalone[._]")
-        list(APPEND Standalone_sources "${src_file}")
-      else()
-        list(APPEND SharedCode_sources "${src_file}")
-      endif()
-    endforeach()
+    macro(__create_intermediate_library target sources)
+      unset(${target}_sources)
+      foreach(src_file ${sources})
+        # See Project::getTargetTypeFromFilePath()
+        # in JUCE/extras/Projucer/Source/Project/jucer_Project.cpp
+        if(src_file MATCHES "_AU[._]")
+          list(APPEND AudioUnit_sources "${src_file}")
+        elseif(src_file MATCHES "_AUv3[._]")
+          list(APPEND AudioUnitv3_sources "${src_file}")
+        elseif(src_file MATCHES "_AAX[._]")
+          list(APPEND AAX_sources "${src_file}")
+        elseif(src_file MATCHES "_RTAS[._]")
+          list(APPEND RTAS_sources "${src_file}")
+        elseif(src_file MATCHES "_VST2[._]")
+          list(APPEND VST_sources "${src_file}")
+        elseif(src_file MATCHES "_VST3[._]")
+          list(APPEND VST3_sources "${src_file}")
+        elseif(src_file MATCHES "_Standalone[._]")
+          list(APPEND Standalone_sources "${src_file}")
+        else()
+          list(APPEND ${target}_sources "${src_file}")
+        endif()
+      endforeach()
+
+      add_library(${target} STATIC ${${target}_sources})
+
+      _FRUT_set_output_directory_properties(${target} "Shared Code")
+      _FRUT_set_common_target_properties(${target} BINARY_NAME ${target})
+      target_compile_definitions(${target} PRIVATE "JUCE_SHARED_CODE=1")
+      _FRUT_set_JucePlugin_Build_defines(${target} "SharedCodeTarget")
+      _FRUT_set_custom_xcode_flags(${target})
+    endmacro()
 
     set(shared_code_target ${target}_Shared_Code)
-    add_library(${shared_code_target} STATIC
+
+    if(JUCER_CREATE_JUCE_LIBRARY_TARGET)
+      __create_intermediate_library(JuceLibrary "${JUCER_LIBRARY_SOURCES}")
+      __create_intermediate_library(${shared_code_target} "${JUCER_PROJECT_SOURCES}")
+      target_link_libraries(${shared_code_target} PUBLIC JuceLibrary)
+    else()
+      set(library_and_project_sources ${JUCER_LIBRARY_SOURCES} ${JUCER_PROJECT_SOURCES})
+      __create_intermediate_library(${shared_code_target} "${library_and_project_sources}")
+    endif()
+
+    target_sources(${shared_code_target} PUBLIC
       ${SharedCode_sources}
       ${JUCER_PROJECT_RESOURCES}
       ${JUCER_PROJECT_XCODE_RESOURCES}
@@ -1510,11 +1543,6 @@ function(jucer_project_end)
       ${icon_file}
       ${resources_rc_file}
     )
-    _FRUT_set_output_directory_properties(${shared_code_target} "Shared Code")
-    _FRUT_set_common_target_properties(${shared_code_target})
-    target_compile_definitions(${shared_code_target} PRIVATE "JUCE_SHARED_CODE=1")
-    _FRUT_set_JucePlugin_Build_defines(${shared_code_target} "SharedCodeTarget")
-    _FRUT_set_custom_xcode_flags(${shared_code_target})
 
     if(JUCER_BUILD_VST)
       set(vst_target ${target}_VST)
@@ -2582,10 +2610,14 @@ endfunction()
 
 function(_FRUT_set_common_target_properties target)
 
+  _FRUT_parse_arguments("BINARY_NAME" "" "${ARGN}")
+
   foreach(config ${JUCER_PROJECT_CONFIGURATIONS})
     string(TOUPPER "${config}" upper_config)
 
-    if(JUCER_BINARY_NAME_${config})
+    if(_BINARY_NAME)
+      set(output_name ${_BINARY_NAME})
+    elseif(JUCER_BINARY_NAME_${config})
       set(output_name "${JUCER_BINARY_NAME_${config}}")
     else()
       set(output_name "${JUCER_PROJECT_NAME}")

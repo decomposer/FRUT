@@ -364,6 +364,7 @@ function(jucer_project_module module_name PATH_KEYWORD modules_folder)
   endif()
 
   set(make_juce_code_browsable ON)
+  unset(compile_in_target)
 
   set(extra_keywords "")
   unset(keyword)
@@ -371,7 +372,7 @@ function(jucer_project_module module_name PATH_KEYWORD modules_folder)
     if(NOT DEFINED keyword)
       set(keyword "${argument}")
 
-      if(keyword STREQUAL "ADD_SOURCE_TO_PROJECT")
+      if(keyword STREQUAL "ADD_SOURCE_TO_PROJECT" OR keyword STREQUAL "COMPILE_IN_TARGET")
         # Nothing to do
       else()
         list(APPEND extra_keywords "${keyword}")
@@ -381,6 +382,8 @@ function(jucer_project_module module_name PATH_KEYWORD modules_folder)
 
       if(keyword STREQUAL "ADD_SOURCE_TO_PROJECT")
         set(make_juce_code_browsable "${value}")
+      elseif(keyword STREQUAL "COMPILE_IN_TARGET")
+        set(compile_in_target "${value}")
       else()
         set(extra_values_${keyword} "${value}")
       endif()
@@ -400,6 +403,10 @@ function(jucer_project_module module_name PATH_KEYWORD modules_folder)
   list(APPEND JUCER_PROJECT_MODULES_FOLDERS "${modules_folder}")
   set(JUCER_PROJECT_MODULES_FOLDERS "${JUCER_PROJECT_MODULES_FOLDERS}" PARENT_SCOPE)
   set(JUCER_PROJECT_MODULE_${module_name}_PATH "${modules_folder}" PARENT_SCOPE)
+
+  if(DEFINED compile_in_target)
+    set(JUCER_PROJECT_MODULE_${module_name}_TARGET "${compile_in_target}" PARENT_SCOPE)
+  endif()
 
   file(GLOB module_src_files
     LIST_DIRECTORIES FALSE
@@ -1572,15 +1579,32 @@ function(jucer_project_end)
     PROPERTIES HEADER_FILE_ONLY TRUE
   )
 
+  set(modules_targets "")
+  set(modules_objects "")
   set(modules_sources "")
   foreach(module_name ${JUCER_PROJECT_MODULES})
     set(module_sources "${JUCER_PROJECT_MODULE_${module_name}_SOURCES}")
-    list(APPEND modules_sources ${module_sources})
+    if(DEFINED JUCER_PROJECT_MODULE_${module_name}_TARGET)
+      set(module_target "${JUCER_PROJECT_MODULE_${module_name}_TARGET}")
+      if(NOT TARGET ${module_target})
+        add_library(${module_target} OBJECT ${module_sources})
+        _FRUT_set_compiler_and_linker_settings(${module_target} COMPILER_SETTINGS_ONLY)
+        _FRUT_set_custom_xcode_flags(${module_target})
+
+        list(APPEND modules_objects "$<TARGET_OBJECTS:${module_target}>")
+        list(APPEND modules_targets ${module_target})
+      else()
+        target_sources(${module_target} PRIVATE ${module_sources})
+      endif()
+    else()
+      list(APPEND modules_sources ${module_sources})
+    endif()
   endforeach()
 
   set(all_sources
     ${JUCER_PROJECT_FILES}
     ${modules_sources}
+    ${modules_objects}
     ${JUCER_PROJECT_MODULES_BROWSABLE_FILES}
     ${icon_file}
     ${resources_rc_file}
@@ -1695,6 +1719,7 @@ function(jucer_project_end)
     set(shared_code_target "${target}_Shared_Code")
     add_library(${shared_code_target} STATIC
       ${SharedCode_sources}
+      ${modules_objects}
       ${JUCER_PROJECT_MODULES_BROWSABLE_FILES}
       ${icon_file}
       ${resources_rc_file}
@@ -1706,6 +1731,11 @@ function(jucer_project_end)
     target_compile_definitions(${shared_code_target} PRIVATE "JUCE_SHARED_CODE=1")
     _FRUT_set_JucePlugin_Build_defines(${shared_code_target} "SharedCodeTarget")
     _FRUT_set_custom_xcode_flags(${shared_code_target})
+
+    foreach(module_target ${modules_targets})
+      target_compile_definitions(${module_target} PRIVATE "JUCE_SHARED_CODE=1")
+      _FRUT_set_JucePlugin_Build_defines(${module_target} "SharedCodeTarget")
+    endforeach()
 
     if(JUCER_BUILD_VST)
       set(vst_target "${target}_VST")

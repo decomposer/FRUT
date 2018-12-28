@@ -43,6 +43,15 @@ set(Reprojucer_supported_exporters_conditions
 
 function(jucer_project_begin)
 
+  # Clear variables if this is not the first jucer project in this file.
+
+  get_cmake_property(variables VARIABLES)
+  foreach(variable ${variables})
+    if("${variable}" MATCHES "JUCER_")
+      unset(${variable} PARENT_SCOPE)
+    endif()
+  endforeach()
+
   _FRUT_parse_arguments("JUCER_VERSION;PROJECT_FILE;PROJECT_ID" "" "${ARGN}")
 
   if(DEFINED _JUCER_VERSION)
